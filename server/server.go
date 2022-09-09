@@ -3,18 +3,26 @@ package server
 import (
 	"fmt"
 	"net"
+	"sync"
+
+	"github.com/yinyanlv/chat/user"
 )
 
 type Server struct {
-	IP   string
-	Port int
+	IP        string
+	Port      int
+	OnlineMap map[string]*user.User
+	mapLock   sync.RWMutex
+	Message   chan string // 消息广播的channel
 }
 
 // 创建服务器
 func NewServer(ip string, port int) *Server {
 	return &Server{
-		IP:   ip,
-		Port: port,
+		IP:        ip,
+		Port:      port,
+		OnlineMap: make(map[string]*user.User),
+		Message:   make(chan string),
 	}
 }
 
@@ -30,6 +38,9 @@ func (s *Server) Start() {
 	// close listen socket
 	defer listener.Close()
 
+	// 启动监听message管道
+	go s.ListenMessage()
+
 	for {
 		// accept
 		conn, err := listener.Accept()
@@ -37,15 +48,44 @@ func (s *Server) Start() {
 			fmt.Println("listener accept error: ", err)
 			continue
 		}
-
-		// handle
+		// 处理当前连接
 		go s.Handle(conn)
 
 	}
 
 }
 
+// 处理连接
 func (s *Server) Handle(conn net.Conn) {
+
 	// nc 127.0.0.1 5000
-	fmt.Println("连接建立成功")
+	user := user.NewUser(conn)
+	// 用户上线
+	s.mapLock.Lock()
+	s.OnlineMap[user.Name] = user
+	s.mapLock.Unlock()
+
+	// 广播用户上线消息
+	s.Broadcast(user, "已上线")
+
+	select {}
+}
+
+// 广播
+func (s *Server) Broadcast(user *user.User, msg string) {
+	sendMsg := "[" + user.Address + "]" + user.Name + ":" + msg
+
+	s.Message <- sendMsg
+}
+
+// 监听message管道
+func (s *Server) ListenMessage() {
+	for {
+		msg := <-s.Message
+		s.mapLock.Lock()
+		for _, cli := range s.OnlineMap {
+			cli.Chanel <- msg
+		}
+		s.mapLock.Unlock()
+	}
 }
