@@ -5,14 +5,12 @@ import (
 	"io"
 	"net"
 	"sync"
-
-	"github.com/yinyanlv/chat/user"
 )
 
 type Server struct {
 	IP        string
 	Port      int
-	OnlineMap map[string]*user.User
+	OnlineMap map[string]*User
 	mapLock   sync.RWMutex
 	Message   chan string // 消息广播的channel
 }
@@ -22,7 +20,7 @@ func NewServer(ip string, port int) *Server {
 	return &Server{
 		IP:        ip,
 		Port:      port,
-		OnlineMap: make(map[string]*user.User),
+		OnlineMap: make(map[string]*User),
 		Message:   make(chan string),
 	}
 }
@@ -60,14 +58,9 @@ func (s *Server) Start() {
 func (s *Server) Handle(conn net.Conn) {
 
 	// nc 127.0.0.1 5000
-	user := user.NewUser(conn)
-	// 用户上线
-	s.mapLock.Lock()
-	s.OnlineMap[user.Name] = user
-	s.mapLock.Unlock()
+	user := NewUser(conn, s)
 
-	// 广播用户上线消息
-	s.Broadcast(user, "已上线")
+	user.Online()
 
 	// 处理客户端发送的消息
 	go func() {
@@ -76,7 +69,7 @@ func (s *Server) Handle(conn net.Conn) {
 			n, err := conn.Read(buf) // Read方法会阻塞等待消息
 			// 客户端关闭
 			if n == 0 {
-				s.Broadcast(user, "下线")
+				user.Offline()
 				return
 			}
 			if err != nil && err != io.EOF {
@@ -86,7 +79,7 @@ func (s *Server) Handle(conn net.Conn) {
 			// 提取信息，去除\n
 			msg := string(buf[:n-1])
 			// 广播消息
-			s.Broadcast(user, msg)
+			user.HandleMessage(msg)
 		}
 	}()
 
@@ -95,7 +88,7 @@ func (s *Server) Handle(conn net.Conn) {
 }
 
 // 广播
-func (s *Server) Broadcast(user *user.User, msg string) {
+func (s *Server) Broadcast(user *User, msg string) {
 	sendMsg := "[" + user.Address + "]" + user.Name + ":" + msg
 
 	s.Message <- sendMsg
