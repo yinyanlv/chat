@@ -2,6 +2,7 @@ package server
 
 import (
 	"net"
+	"strings"
 )
 
 type User struct {
@@ -86,6 +87,30 @@ func (u *User) HandleMessage(msg string) {
 		u.server.mapLock.Unlock()
 
 		u.SendMessage("您已设置用户名为：" + u.Name + "\n")
+	} else if len(msg) > 3 && msg[:3] == "to|" {
+		// 消息格式：to|张三|你好
+		list := strings.Split(msg, "|")
+
+		remoteName := list[1]
+		if remoteName == "" {
+			u.SendMessage("请输入正确的消息格式，如：\"to|张三|你好\"\n")
+			return
+		}
+
+		remoteUser, ok := u.server.OnlineMap[remoteName]
+		if !ok {
+			u.SendMessage("用户" + remoteName + "不存在！\n")
+			return
+		}
+
+		content := list[2]
+		if content == "" {
+			u.SendMessage("请输入消息内容\n")
+			return
+		}
+
+		remoteUser.SendMessage(u.Name + "对你说：" + content + "\n")
+
 	} else {
 		u.server.Broadcast(u, msg)
 	}

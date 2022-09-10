@@ -91,7 +91,7 @@ func (s *Server) Handle(conn net.Conn) {
 		select {
 		case <-isLive: // 当前用户活跃
 			// 不做任何操作
-		case <-time.After(time.Second * 10): // 每次for循环，如果执行到该case，则重置定时器
+		case <-time.After(time.Second * 300): // 超时时间5分钟，每次for循环，如果执行到该case，则重置定时器
 			user.SendMessage("你被踢了")
 			close(user.Chanel)
 			user.Conn.Close()
