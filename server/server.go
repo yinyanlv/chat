@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"time"
 )
 
 type Server struct {
@@ -49,9 +50,7 @@ func (s *Server) Start() {
 		}
 		// 处理当前连接
 		go s.Handle(conn)
-
 	}
-
 }
 
 // 处理连接
@@ -61,6 +60,8 @@ func (s *Server) Handle(conn net.Conn) {
 	user := NewUser(conn, s)
 
 	user.Online()
+
+	isLive := make(chan bool)
 
 	// 处理客户端发送的消息
 	go func() {
@@ -80,11 +81,26 @@ func (s *Server) Handle(conn net.Conn) {
 			msg := string(buf[:n-1])
 			// 广播消息
 			user.HandleMessage(msg)
+			// 标记用户为活跃用户
+			isLive <- true
 		}
 	}()
 
 	// 阻塞当前handler
-	select {}
+	for {
+		select {
+		case <-isLive: // 当前用户活跃
+			// 不做任何操作
+		case <-time.After(time.Second * 10): // 每次for循环，如果执行到该case，则重置定时器
+			user.SendMessage("你被踢了")
+			close(user.Chanel)
+			user.Conn.Close()
+			s.mapLock.Lock()
+			delete(s.OnlineMap, user.Name)
+			s.mapLock.Unlock()
+			return // 或者runtime.Goexit()
+		}
+	}
 }
 
 // 广播
